@@ -117,6 +117,7 @@ describe("removeNgWords", () => {
 describe("generateReviewReply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // @ts-expect-error -- vitest環境ではNODE_ENVの代入が必要
     process.env.NODE_ENV = "test";
     resetClient();
     process.env.OPENAI_API_KEY = "test-key";
