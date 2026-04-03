@@ -1,5 +1,6 @@
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -35,6 +36,9 @@ const CITATION_PLATFORMS = [
 async function main() {
   console.log("シードデータの投入を開始...");
 
+  // 開発用パスワード（bcrypt コスト12）
+  const devPassword = await bcrypt.hash("password123", 12);
+
   // テナント作成
   const tenant = await prisma.tenant.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
@@ -61,6 +65,7 @@ async function main() {
       id: "00000000-0000-0000-0000-000000000010",
       tenantId: tenant.id,
       email: "admin@sing-pharmacy.example.com",
+      encryptedPassword: devPassword,
       name: "管理者",
       role: "admin",
       emailVerified: true,
@@ -81,6 +86,7 @@ async function main() {
       id: "00000000-0000-0000-0000-000000000011",
       tenantId: tenant.id,
       email: "staff@sing-pharmacy.example.com",
+      encryptedPassword: devPassword,
       name: "スタッフA",
       role: "staff",
       emailVerified: true,

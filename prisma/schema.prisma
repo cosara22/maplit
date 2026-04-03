@@ -95,6 +95,8 @@ model User {
   role              Role      @default(staff)
   image             String?   @db.VarChar(500)
   emailVerified     Boolean   @default(false) @map("email_verified")
+  failedLoginAttempts Int     @default(0) @map("failed_login_attempts")
+  lockedUntil       DateTime? @map("locked_until")
   lastSignInAt      DateTime? @map("last_sign_in_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
