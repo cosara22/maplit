@@ -1,28 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   parseAioScoreResponse,
-  buildAioScorePrompt,
+  buildAioScoreUserPrompt,
   calculateAioScore,
-  setOpenAIClientForTest,
 } from "./aio-score";
 
-// OpenAIクライアントのモック
-function createMockClient(content: string) {
-  return {
+// モック: openai.ts のgetClient
+const mockCreate = vi.fn();
+vi.mock("./openai", () => ({
+  getClient: () => ({
     chat: {
       completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{ message: { content } }],
-        }),
+        create: mockCreate,
       },
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any;
+  }),
+}));
+
+function mockOpenAIResponse(content: string) {
+  mockCreate.mockResolvedValue({
+    choices: [{ message: { content } }],
+  });
 }
 
 describe("AIOスコア算出", () => {
   beforeEach(() => {
-    setOpenAIClientForTest(null);
+    vi.clearAllMocks();
   });
 
   // UT-AIO-01: OpenAI APIのレスポンスからスコアを正しくパースする
@@ -56,9 +59,9 @@ describe("AIOスコア算出", () => {
   // UT-AIO-05: プロンプトに口コミテキストが正しく埋め込まれる
   it("プロンプトに口コミテキストが正しく埋め込まれる", () => {
     const comment = "薬剤師さんがとても親切で丁寧に説明してくれました";
-    const prompt = buildAioScorePrompt(comment);
+    const prompt = buildAioScoreUserPrompt(comment);
     expect(prompt).toContain(comment);
-    expect(prompt).toContain("AI検索最適化スコアを1〜5で評価");
+    expect(prompt).toContain("```");
   });
 
   // UT-AIO-06: 空の口コミの場合スコア1を返す
@@ -75,10 +78,7 @@ describe("AIOスコア算出", () => {
 
   // 統合テスト: calculateAioScoreがOpenAI APIを呼び出して結果を返す
   it("OpenAI APIを呼び出してスコアを返す", async () => {
-    const mockClient = createMockClient(
-      '{"score": 4, "reason": "具体的な体験が書かれている"}'
-    );
-    setOpenAIClientForTest(mockClient);
+    mockOpenAIResponse('{"score": 4, "reason": "具体的な体験が書かれている"}');
 
     const result = await calculateAioScore(
       "しん薬局の薬剤師さんがとても親切でした。処方箋の説明も丁寧で安心できました。"
@@ -86,7 +86,14 @@ describe("AIOスコア算出", () => {
 
     expect(result.score).toBe(4);
     expect(result.reason).toBe("具体的な体験が書かれている");
-    expect(mockClient.chat.completions.create).toHaveBeenCalledOnce();
+    expect(mockCreate).toHaveBeenCalledOnce();
+
+    // system/userメッセージが分離されていることを確認
+    const callArgs = mockCreate.mock.calls[0][0];
+    expect(callArgs.messages).toHaveLength(2);
+    expect(callArgs.messages[0].role).toBe("system");
+    expect(callArgs.messages[1].role).toBe("user");
+    expect(callArgs.messages[1].content).toContain("```");
   });
 
   // scoreフィールドが数値でない場合
@@ -101,5 +108,23 @@ describe("AIOスコア算出", () => {
     const result = parseAioScoreResponse('{"score": 4, "reason": 123}');
     expect(result.score).toBe(4);
     expect(result.reason).toBe("");
+  });
+
+  // OpenAI APIエラー時に例外をスローする
+  it("OpenAI APIエラー時に例外をスローする", async () => {
+    mockCreate.mockRejectedValue(new Error("Rate limit exceeded"));
+
+    await expect(
+      calculateAioScore("テスト口コミ")
+    ).rejects.toThrow("Rate limit exceeded");
+  });
+
+  // 長いテキストがトリミングされる
+  it("2000文字を超える口コミがトリミングされる", () => {
+    const longComment = "あ".repeat(3000);
+    const prompt = buildAioScoreUserPrompt(longComment);
+    // 2000文字 + "## 口コミ\n```\n" + "\n```" のオーバーヘッド
+    expect(prompt).not.toContain("あ".repeat(3000));
+    expect(prompt).toContain("あ".repeat(2000));
   });
 });

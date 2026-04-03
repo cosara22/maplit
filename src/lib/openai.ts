@@ -3,7 +3,7 @@ import OpenAI, { APIError } from "openai";
 // OpenAIクライアント（シングルトン）
 let client: OpenAI | null = null;
 
-function getClient(): OpenAI {
+export function getClient(): OpenAI {
   if (!client) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {

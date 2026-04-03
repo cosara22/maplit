@@ -7,6 +7,7 @@ import {
   logApiError,
 } from "@/lib/api-helpers";
 import { calculateAioScore } from "@/lib/aio-score";
+import { isOpenAiError } from "@/lib/openai";
 
 // バッチ処理の上限（1リクエストあたり）
 const BATCH_LIMIT = 10;
@@ -87,6 +88,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ calculated, remaining });
   } catch (error) {
     logApiError("aio-score", error);
+    if (isOpenAiError(error)) {
+      return NextResponse.json(
+        { error: "AIOスコアの算出に失敗しました", code: "AI_SERVICE_ERROR" },
+        { status: 502 }
+      );
+    }
     return NextResponse.json(
       { error: "内部エラーが発生しました", code: "INTERNAL_ERROR" },
       { status: 500 }
