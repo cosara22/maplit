@@ -42,3 +42,5 @@ prisma/*.db-journal
 # playwright
 playwright-report/
 blob-report/
+
+/src/generated/prisma
