@@ -129,20 +129,24 @@ export async function POST(request: NextRequest) {
     const result = calculateGbpScore(location);
     const now = new Date();
 
+    // Prisma 7のJson型互換のためJSON変換
+    const scoreBreakdownJson = JSON.parse(JSON.stringify(result.scoreBreakdown));
+    const missingItemsJson = JSON.parse(JSON.stringify(result.missingItems));
+
     // upsert: 既存レコードがあれば更新、なければ作成
     const gbpScore = await db.gbpScore.upsert({
       where: { locationId: validLocationId },
       create: {
         locationId: validLocationId,
         totalScore: result.totalScore,
-        scoreBreakdown: result.scoreBreakdown,
-        missingItems: result.missingItems,
+        scoreBreakdown: scoreBreakdownJson,
+        missingItems: missingItemsJson,
         calculatedAt: now,
       },
       update: {
         totalScore: result.totalScore,
-        scoreBreakdown: result.scoreBreakdown,
-        missingItems: result.missingItems,
+        scoreBreakdown: scoreBreakdownJson,
+        missingItems: missingItemsJson,
         calculatedAt: now,
       },
     });
