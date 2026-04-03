@@ -80,6 +80,95 @@ describe("PerformanceSection", () => {
     expect(compareBtn.closest("button")).toBeDisabled();
   });
 
+  it("CSVボタンが表示される", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockPerformanceData),
+    });
+
+    render(<PerformanceSection locationId={TEST_LOCATION_ID} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("CSV")).toBeInTheDocument();
+    });
+    const csvBtn = screen.getByText("CSV").closest("button");
+    expect(csvBtn).not.toBeDisabled();
+  });
+
+  it("読み込み中はCSVボタンがdisabledになる", () => {
+    global.fetch = vi.fn().mockReturnValue(new Promise(() => {}));
+    render(<PerformanceSection locationId={TEST_LOCATION_ID} />);
+    const csvBtn = screen.getByText("CSV").closest("button");
+    expect(csvBtn).toBeDisabled();
+  });
+
+  it("CSVボタンクリックでAPIを呼び出す", async () => {
+    const user = userEvent.setup();
+    const mockBlob = new Blob(["csv-data"], { type: "text/csv" });
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockPerformanceData),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        blob: () => Promise.resolve(mockBlob),
+      });
+
+    const mockCreateObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+    const mockRevokeObjectURL = vi.fn();
+    global.URL.createObjectURL = mockCreateObjectURL;
+    global.URL.revokeObjectURL = mockRevokeObjectURL;
+
+    render(<PerformanceSection locationId={TEST_LOCATION_ID} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("CSV")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("CSV").closest("button")!);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+    const secondCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(secondCall).toContain("/api/export/performance");
+    expect(mockCreateObjectURL).toHaveBeenCalled();
+    expect(mockRevokeObjectURL).toHaveBeenCalled();
+  });
+
+  it("CSVダウンロード失敗時にalertが表示される", async () => {
+    const user = userEvent.setup();
+    const mockAlert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockPerformanceData),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+    render(<PerformanceSection locationId={TEST_LOCATION_ID} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("CSV")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("CSV").closest("button")!);
+
+    await waitFor(() => {
+      expect(mockAlert).toHaveBeenCalledWith(
+        "CSVのダウンロードに失敗しました。再度お試しください。"
+      );
+    });
+
+    mockAlert.mockRestore();
+  });
+
   it("データ取得失敗時にデータなしメッセージを表示", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
