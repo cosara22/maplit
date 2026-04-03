@@ -176,7 +176,12 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
           <p className="text-sm text-gray-500">{total}件の口コミ</p>
           <div className="space-y-4">
             {reviews.map((review) => (
-              <ReviewCard key={review.id} review={review} />
+              <ReviewCard
+                key={review.id}
+                review={review}
+                locationId={locationId}
+                onReviewUpdated={fetchReviews}
+              />
             ))}
           </div>
 
