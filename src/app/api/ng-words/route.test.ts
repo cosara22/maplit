@@ -146,7 +146,7 @@ describe("POST /api/ng-words", () => {
     expect(res.status).toBe(201);
     expect(data.ngWord.word).toBe("競合店名");
     expect(mockCreate).toHaveBeenCalledWith({
-      data: { word: "競合店名" },
+      data: { word: "競合店名", tenantId: TEST_TENANT_ID },
       select: { id: true, word: true, createdAt: true },
     });
   });
