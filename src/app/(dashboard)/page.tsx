@@ -1,12 +1,35 @@
-export default function DashboardPage() {
-  return (
-    <div className="flex flex-col items-center justify-center py-16">
-      <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-        ダッシュボード
-      </h2>
-      <p className="mt-2 text-sm text-gray-500">
-        ここにKPIカードやグラフが表示されます
-      </p>
-    </div>
-  );
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { createTenantClient } from "@/lib/prisma-tenant";
+import { DashboardContent } from "@/components/dashboard/dashboard-content";
+
+export default async function DashboardPage() {
+  const session = await auth();
+  if (!session?.user?.tenantId) {
+    redirect("/login");
+  }
+
+  const db = createTenantClient(session.user.tenantId);
+
+  // テナントの最初のアクティブな店舗を取得
+  const location = await db.location.findFirst({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (!location) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <h2 className="text-2xl font-bold tracking-tight text-gray-900">
+          ダッシュボード
+        </h2>
+        <p className="mt-2 text-sm text-gray-500">
+          店舗が登録されていません。GBP初期設定から店舗を追加してください。
+        </p>
+      </div>
+    );
+  }
+
+  return <DashboardContent locationId={location.id} locationName={location.name} />;
 }
