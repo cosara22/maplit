@@ -41,7 +41,7 @@ const TEST_LOCATION_ID = "00000000-0000-0000-0000-000000000001";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000010";
 const BOM = "\uFEFF";
 const HEADER =
-  "検索数,閲覧数,ルートリクエスト,通話クリック率(%),電話（メイン）,通話ボタン,ウェブサイト,合計アクション";
+  "期間開始,期間終了,検索数,閲覧数,ルートリクエスト,通話クリック率(%),電話（メイン）,通話ボタン,ウェブサイト,合計アクション";
 
 function createRequest(params: Record<string, string>) {
   const url = new URL("http://localhost/api/export/performance");
@@ -76,6 +76,16 @@ describe("GET /api/export/performance", () => {
     expect(res.status).toBe(400);
   });
 
+  it("不正なperiodパラメータの場合400を返す", async () => {
+    mockFindMany.mockResolvedValue([]);
+    const res = await GET(
+      createRequest({ locationId: TEST_LOCATION_ID, period: "invalid" })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.code).toBe("INVALID_PERIOD");
+  });
+
   it("存在しない店舗の場合404を返す", async () => {
     mockRequireLocation.mockResolvedValue(
       NextResponse.json({ error: "店舗が見つかりません" }, { status: 404 })
@@ -90,6 +100,8 @@ describe("GET /api/export/performance", () => {
   it("IT-CSV-01: Content-Type が text/csv で返る", async () => {
     mockFindMany.mockResolvedValue([
       {
+        periodStart: new Date("2026-03-01"),
+        periodEnd: new Date("2026-03-31"),
         searchCount: 800,
         viewCount: 600,
         directionRequests: 50,
@@ -107,19 +119,22 @@ describe("GET /api/export/performance", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
-    expect(res.headers.get("Content-Disposition")).toContain("performance.csv");
+    expect(res.headers.get("Content-Disposition")).toContain("performance_30d_");
+    expect(res.headers.get("Content-Disposition")).toContain(".csv");
 
     const body = await res.text();
     const lines = body.replace(BOM, "").trimEnd().split("\n");
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe(HEADER);
-    expect(lines[1]).toBe("800,600,50,4,8,30,15,103");
+    expect(lines[1]).toBe("2026-03-01,2026-03-31,800,600,50,4,8,30,15,103");
   });
 
   // IT-CSV-02: CSVにBOM付きUTF-8ヘッダーがある
   it("IT-CSV-02: BOM付きUTF-8で出力される", async () => {
     mockFindMany.mockResolvedValue([
       {
+        periodStart: new Date("2026-03-01"),
+        periodEnd: new Date("2026-03-31"),
         searchCount: 100,
         viewCount: 200,
         directionRequests: 10,
@@ -173,6 +188,8 @@ describe("GET /api/export/performance", () => {
   it("null値がある場合0にフォールバックする", async () => {
     mockFindMany.mockResolvedValue([
       {
+        periodStart: null,
+        periodEnd: null,
         searchCount: null,
         viewCount: null,
         directionRequests: null,
@@ -190,6 +207,6 @@ describe("GET /api/export/performance", () => {
     const body = await res.text();
     const lines = body.replace(BOM, "").trimEnd().split("\n");
 
-    expect(lines[1]).toBe("0,0,0,0,0,0,0,0");
+    expect(lines[1]).toBe(",,0,0,0,0,0,0,0,0");
   });
 });

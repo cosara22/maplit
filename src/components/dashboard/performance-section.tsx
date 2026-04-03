@@ -125,11 +125,13 @@ export function PerformanceSection({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "performance.csv";
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `performance_${period}_${today}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("[PerformanceSection] CSV export error:", error);
+      alert("CSVのダウンロードに失敗しました。再度お試しください。");
     } finally {
       setExporting(false);
     }

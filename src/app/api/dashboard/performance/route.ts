@@ -6,25 +6,7 @@ import {
   requireLocation,
   logApiError,
 } from "@/lib/api-helpers";
-
-// 期間パラメータから日数を計算
-function getPeriodDays(period: string): number | null {
-  switch (period) {
-    case "30d":
-      return 30;
-    case "90d":
-      return 90;
-    case "1y":
-      return 365;
-    case "all":
-      return null;
-    default:
-      return 30;
-  }
-}
-
-// 結果件数の上限（メモリ保護）
-const MAX_METRICS = 1000;
+import { isValidPeriod, getPeriodDays } from "@/lib/period";
 
 // GET /api/dashboard/performance?locationId=xxx&period=30d
 export async function GET(request: NextRequest) {
@@ -40,10 +22,16 @@ export async function GET(request: NextRequest) {
     const locationResult = await requireLocation(db, locationId!);
     if (locationResult instanceof NextResponse) return locationResult;
 
-    const period = request.nextUrl.searchParams.get("period") || "30d";
+    const periodRaw = request.nextUrl.searchParams.get("period") || "30d";
+    if (!isValidPeriod(periodRaw)) {
+      return NextResponse.json(
+        { error: "期間パラメータが不正です", code: "INVALID_PERIOD" },
+        { status: 400 }
+      );
+    }
 
     // 期間フィルタ構築
-    const days = getPeriodDays(period);
+    const days = getPeriodDays(periodRaw);
     const dateFilter = days
       ? { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
       : undefined;

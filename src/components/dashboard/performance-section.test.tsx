@@ -138,6 +138,37 @@ describe("PerformanceSection", () => {
     expect(mockRevokeObjectURL).toHaveBeenCalled();
   });
 
+  it("CSVダウンロード失敗時にalertが表示される", async () => {
+    const user = userEvent.setup();
+    const mockAlert = vi.spyOn(window, "alert").mockImplementation(() => {});
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockPerformanceData),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+    render(<PerformanceSection locationId={TEST_LOCATION_ID} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("CSV")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("CSV").closest("button")!);
+
+    await waitFor(() => {
+      expect(mockAlert).toHaveBeenCalledWith(
+        "CSVのダウンロードに失敗しました。再度お試しください。"
+      );
+    });
+
+    mockAlert.mockRestore();
+  });
+
   it("データ取得失敗時にデータなしメッセージを表示", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,

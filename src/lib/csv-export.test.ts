@@ -6,10 +6,12 @@ import {
 } from "./csv-export";
 
 const HEADER =
-  "検索数,閲覧数,ルートリクエスト,通話クリック率(%),電話（メイン）,通話ボタン,ウェブサイト,合計アクション";
+  "期間開始,期間終了,検索数,閲覧数,ルートリクエスト,通話クリック率(%),電話（メイン）,通話ボタン,ウェブサイト,合計アクション";
 const BOM = "\uFEFF";
 
 const sampleRow: PerformanceRow = {
+  periodStart: "2026-03-01",
+  periodEnd: "2026-03-31",
   searchCount: 1267,
   viewCount: 1206,
   directionRequests: 61,
@@ -28,7 +30,7 @@ describe("generatePerformanceCsv", () => {
 
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe(HEADER);
-    expect(lines[1]).toBe("1267,1206,61,4.42,10,46,0,117");
+    expect(lines[1]).toBe("2026-03-01,2026-03-31,1267,1206,61,4.42,10,46,0,117");
   });
 
   // UT-CSV-02: 日本語を含むデータがBOM付きUTF-8で出力される
@@ -42,16 +44,21 @@ describe("generatePerformanceCsv", () => {
   });
 
   // UT-CSV-03: カンマを含む値がダブルクォートで囲まれる
-  it("UT-CSV-03: カンマを含む値がダブルクォートで囲まれる", () => {
+  it("UT-CSV-03: カンマ・ダブルクォート・改行・CRを含む値が正しくエスケープされる", () => {
+    // カンマ
     expect(escapeCsvValue("東京都渋谷区,1-8-5")).toBe(
       '"東京都渋谷区,1-8-5"'
     );
-    // ダブルクォートを含む値はエスケープされる
+    // ダブルクォート
     expect(escapeCsvValue('値に"引用符"あり')).toBe(
       '"値に""引用符""あり"'
     );
-    // 改行を含む値も囲まれる
+    // 改行
     expect(escapeCsvValue("行1\n行2")).toBe('"行1\n行2"');
+    // キャリッジリターン（W-2対応）
+    expect(escapeCsvValue("行1\r行2")).toBe('"行1\r行2"');
+    // CRLF
+    expect(escapeCsvValue("行1\r\n行2")).toBe('"行1\r\n行2"');
     // 特殊文字なしの場合はそのまま
     expect(escapeCsvValue("通常の値")).toBe("通常の値");
   });
@@ -67,6 +74,8 @@ describe("generatePerformanceCsv", () => {
 
   it("複数行のデータが正しく出力される", () => {
     const row2: PerformanceRow = {
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
       searchCount: 500,
       viewCount: 300,
       directionRequests: 20,
@@ -80,6 +89,18 @@ describe("generatePerformanceCsv", () => {
     const lines = csv.replace(BOM, "").trimEnd().split("\n");
 
     expect(lines).toHaveLength(3);
-    expect(lines[2]).toBe("500,300,20,2.5,5,15,10,50");
+    expect(lines[2]).toBe("2026-02-01,2026-02-28,500,300,20,2.5,5,15,10,50");
+  });
+
+  it("callClickRateの浮動小数点精度が丸められる", () => {
+    const row: PerformanceRow = {
+      ...sampleRow,
+      callClickRate: 4.000000000000001,
+    };
+    const csv = generatePerformanceCsv([row]);
+    const lines = csv.replace(BOM, "").trimEnd().split("\n");
+
+    // 浮動小数点の誤差が丸められる
+    expect(lines[1]).toContain(",4,");
   });
 });

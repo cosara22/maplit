@@ -3,6 +3,8 @@ const BOM = "\uFEFF";
 
 /** パフォーマンスCSVのヘッダー定義 */
 const PERFORMANCE_HEADERS = [
+  "期間開始",
+  "期間終了",
   "検索数",
   "閲覧数",
   "ルートリクエスト",
@@ -15,6 +17,8 @@ const PERFORMANCE_HEADERS = [
 
 /** パフォーマンスデータの行 */
 export interface PerformanceRow {
+  periodStart: string;
+  periodEnd: string;
   searchCount: number;
   viewCount: number;
   directionRequests: number;
@@ -27,10 +31,15 @@ export interface PerformanceRow {
 
 /**
  * CSV用に値をエスケープする。
- * カンマ・ダブルクォート・改行を含む場合はダブルクォートで囲む。
+ * カンマ・ダブルクォート・改行・キャリッジリターンを含む場合はダブルクォートで囲む。
  */
 export function escapeCsvValue(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+  if (
+    value.includes(",") ||
+    value.includes('"') ||
+    value.includes("\n") ||
+    value.includes("\r")
+  ) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
@@ -56,10 +65,12 @@ export function generatePerformanceCsv(rows: PerformanceRow[]): string {
 
   const dataLines = rows.map((row) =>
     rowToCsvLine([
+      row.periodStart,
+      row.periodEnd,
       String(row.searchCount),
       String(row.viewCount),
       String(row.directionRequests),
-      String(row.callClickRate),
+      String(Math.round(row.callClickRate * 100) / 100),
       String(row.phoneCalls),
       String(row.callButtonClicks),
       String(row.websiteClicks),

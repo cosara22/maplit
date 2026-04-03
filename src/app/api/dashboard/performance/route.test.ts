@@ -75,6 +75,25 @@ describe("GET /api/dashboard/performance", () => {
     expect(res.status).toBe(400);
   });
 
+  it("不正なperiodパラメータの場合400を返す", async () => {
+    mockAggregate.mockResolvedValue({
+      _sum: {
+        searchCount: 0, viewCount: 0, directionRequests: 0,
+        phoneCalls: 0, callButtonClicks: 0, websiteClicks: 0, totalActions: 0,
+      },
+      _avg: { callClickRate: null },
+      _count: 0,
+    });
+    mockFindFirst.mockResolvedValue(null);
+
+    const res = await GET(
+      createRequest({ locationId: TEST_LOCATION_ID, period: "invalid" })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.code).toBe("INVALID_PERIOD");
+  });
+
   it("存在しない店舗の場合404を返す", async () => {
     mockRequireLocation.mockResolvedValue(
       NextResponse.json({ error: "店舗が見つかりません" }, { status: 404 })

@@ -6,29 +6,11 @@ import {
   requireLocation,
   logApiError,
 } from "@/lib/api-helpers";
+import { isValidPeriod, getPeriodDays, MAX_METRICS } from "@/lib/period";
 import {
   generatePerformanceCsv,
   PerformanceRow,
 } from "@/lib/csv-export";
-
-// 期間パラメータから日数を計算
-function getPeriodDays(period: string): number | null {
-  switch (period) {
-    case "30d":
-      return 30;
-    case "90d":
-      return 90;
-    case "1y":
-      return 365;
-    case "all":
-      return null;
-    default:
-      return 30;
-  }
-}
-
-// 結果件数の上限（メモリ保護）
-const MAX_METRICS = 1000;
 
 // GET /api/export/performance?locationId=xxx&period=30d
 export async function GET(request: NextRequest) {
@@ -44,10 +26,16 @@ export async function GET(request: NextRequest) {
     const locationResult = await requireLocation(db, locationId!);
     if (locationResult instanceof NextResponse) return locationResult;
 
-    const period = request.nextUrl.searchParams.get("period") || "30d";
+    const periodRaw = request.nextUrl.searchParams.get("period") || "30d";
+    if (!isValidPeriod(periodRaw)) {
+      return NextResponse.json(
+        { error: "期間パラメータが不正です", code: "INVALID_PERIOD" },
+        { status: 400 }
+      );
+    }
 
     // 期間フィルタ構築
-    const days = getPeriodDays(period);
+    const days = getPeriodDays(periodRaw);
     const dateFilter = days
       ? { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
       : undefined;
@@ -63,6 +51,8 @@ export async function GET(request: NextRequest) {
       orderBy: { periodStart: "desc" as const },
       take: MAX_METRICS,
       select: {
+        periodStart: true,
+        periodEnd: true,
         searchCount: true,
         viewCount: true,
         directionRequests: true,
@@ -75,6 +65,12 @@ export async function GET(request: NextRequest) {
     });
 
     const rows: PerformanceRow[] = metrics.map((m) => ({
+      periodStart: m.periodStart
+        ? new Date(m.periodStart).toISOString().slice(0, 10)
+        : "",
+      periodEnd: m.periodEnd
+        ? new Date(m.periodEnd).toISOString().slice(0, 10)
+        : "",
       searchCount: m.searchCount ?? 0,
       viewCount: m.viewCount ?? 0,
       directionRequests: m.directionRequests ?? 0,
@@ -86,13 +82,14 @@ export async function GET(request: NextRequest) {
     }));
 
     const csv = generatePerformanceCsv(rows);
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `performance_${periodRaw}_${today}.csv`;
 
     return new NextResponse(csv, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition":
-          'attachment; filename="performance.csv"',
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   } catch (error) {
