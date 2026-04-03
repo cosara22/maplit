@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { createTenantClient } from "@/lib/prisma-tenant";
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import {
+  requireAuth,
+  isErrorResponse,
+  validateLocationId,
+  requireLocation,
+  logApiError,
+} from "@/lib/api-helpers";
 
 // 期間パラメータから日数を計算
 function getPeriodDays(period: string): number | null {
@@ -21,44 +23,24 @@ function getPeriodDays(period: string): number | null {
   }
 }
 
+// 結果件数の上限（メモリ保護）
+const MAX_METRICS = 1000;
+
 // GET /api/dashboard/performance?locationId=xxx&period=30d
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.tenantId) {
-      return NextResponse.json(
-        { error: "認証が必要です", code: "UNAUTHORIZED" },
-        { status: 401 }
-      );
-    }
+    const authResult = await requireAuth();
+    if (isErrorResponse(authResult)) return authResult;
+    const { db } = authResult;
 
     const locationId = request.nextUrl.searchParams.get("locationId");
-    if (!locationId || typeof locationId !== "string") {
-      return NextResponse.json(
-        { error: "locationIdは必須です", code: "MISSING_LOCATION_ID" },
-        { status: 400 }
-      );
-    }
-    if (!UUID_REGEX.test(locationId)) {
-      return NextResponse.json(
-        { error: "locationIdの形式が不正です", code: "INVALID_LOCATION_ID" },
-        { status: 400 }
-      );
-    }
+    const validationError = validateLocationId(locationId);
+    if (validationError) return validationError;
+
+    const locationResult = await requireLocation(db, locationId!);
+    if (locationResult instanceof NextResponse) return locationResult;
 
     const period = request.nextUrl.searchParams.get("period") || "30d";
-    const db = createTenantClient(session.user.tenantId);
-
-    // ロケーション存在確認
-    const location = await db.location.findFirst({
-      where: { id: locationId },
-    });
-    if (!location) {
-      return NextResponse.json(
-        { error: "店舗が見つかりません", code: "LOCATION_NOT_FOUND" },
-        { status: 404 }
-      );
-    }
 
     // 期間フィルタ構築
     const days = getPeriodDays(period);
@@ -66,66 +48,57 @@ export async function GET(request: NextRequest) {
       ? { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
       : undefined;
 
-    // パフォーマンスメトリクスを集計
-    const metrics = await db.performanceMetric.findMany({
-      where: {
-        locationId,
-        ...(dateFilter ? { periodStart: dateFilter } : {}),
-      },
-      orderBy: { periodStart: "desc" },
-    });
+    const where = {
+      locationId: locationId!,
+      ...(dateFilter ? { periodStart: dateFilter } : {}),
+    };
 
-    // 集計
-    const aggregated = metrics.reduce(
-      (acc, m) => ({
-        searchCount: acc.searchCount + m.searchCount,
-        viewCount: acc.viewCount + m.viewCount,
-        directionRequests: acc.directionRequests + m.directionRequests,
-        phoneCalls: acc.phoneCalls + m.phoneCalls,
-        callButtonClicks: acc.callButtonClicks + m.callButtonClicks,
-        websiteClicks: acc.websiteClicks + m.websiteClicks,
-        totalActions: acc.totalActions + m.totalActions,
-        callClickRateSum: acc.callClickRateSum + m.callClickRate,
-        count: acc.count + 1,
+    // 集計クエリ（全件ロード回避）
+    const [aggregated, latestMetric] = await Promise.all([
+      db.performanceMetric.aggregate({
+        where,
+        _sum: {
+          searchCount: true,
+          viewCount: true,
+          directionRequests: true,
+          phoneCalls: true,
+          callButtonClicks: true,
+          websiteClicks: true,
+          totalActions: true,
+        },
+        _avg: {
+          callClickRate: true,
+        },
+        _count: true,
       }),
-      {
-        searchCount: 0,
-        viewCount: 0,
-        directionRequests: 0,
-        phoneCalls: 0,
-        callButtonClicks: 0,
-        websiteClicks: 0,
-        totalActions: 0,
-        callClickRateSum: 0,
-        count: 0,
-      }
-    );
+      // 最新メトリクスからキーワードと期間終了日を取得
+      db.performanceMetric.findFirst({
+        where,
+        orderBy: { periodStart: "desc" },
+        select: { searchKeywords: true, periodEnd: true },
+      }),
+    ]);
 
-    // 検索キーワード集計（最新メトリクスから取得）
-    const latestMetric = metrics[0];
-    const searchKeywords = latestMetric?.searchKeywords ?? [];
-
-    // 期間終了日
-    const periodEnd = latestMetric?.periodEnd ?? new Date();
+    const sum = aggregated._sum;
+    const callClickRate =
+      aggregated._count > 0
+        ? Math.round((aggregated._avg.callClickRate ?? 0) * 100) / 100
+        : 0;
 
     return NextResponse.json({
-      searchCount: aggregated.searchCount,
-      viewCount: aggregated.viewCount,
-      directionRequests: aggregated.directionRequests,
-      callClickRate:
-        aggregated.count > 0
-          ? Math.round((aggregated.callClickRateSum / aggregated.count) * 100) /
-            100
-          : 0,
-      phoneCalls: aggregated.phoneCalls,
-      callButtonClicks: aggregated.callButtonClicks,
-      websiteClicks: aggregated.websiteClicks,
-      totalActions: aggregated.totalActions,
-      periodEnd,
-      searchKeywords,
+      searchCount: sum.searchCount ?? 0,
+      viewCount: sum.viewCount ?? 0,
+      directionRequests: sum.directionRequests ?? 0,
+      callClickRate,
+      phoneCalls: sum.phoneCalls ?? 0,
+      callButtonClicks: sum.callButtonClicks ?? 0,
+      websiteClicks: sum.websiteClicks ?? 0,
+      totalActions: sum.totalActions ?? 0,
+      periodEnd: latestMetric?.periodEnd ?? new Date(),
+      searchKeywords: latestMetric?.searchKeywords ?? [],
     });
   } catch (error) {
-    console.error("[performance] GET error:", error);
+    logApiError("performance", error);
     return NextResponse.json(
       { error: "内部エラーが発生しました", code: "INTERNAL_ERROR" },
       { status: 500 }

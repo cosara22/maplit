@@ -26,6 +26,12 @@ import {
   Activity,
 } from "lucide-react";
 
+interface SearchKeyword {
+  keyword: string;
+  count: number;
+  isTracked: boolean;
+}
+
 interface PerformanceData {
   searchCount: number;
   viewCount: number;
@@ -36,15 +42,12 @@ interface PerformanceData {
   websiteClicks: number;
   totalActions: number;
   periodEnd: string;
-  searchKeywords: Array<{
-    keyword: string;
-    count: number;
-    isTracked: boolean;
-  }>;
+  searchKeywords: SearchKeyword[];
 }
 
 interface PerformanceSectionProps {
   locationId: string;
+  onKeywordsLoaded?: (keywords: SearchKeyword[]) => void;
 }
 
 const KPI_CONFIG = [
@@ -78,7 +81,10 @@ function formatValue(value: number, format: string): string {
   return value.toLocaleString("ja-JP");
 }
 
-export function PerformanceSection({ locationId }: PerformanceSectionProps) {
+export function PerformanceSection({
+  locationId,
+  onKeywordsLoaded,
+}: PerformanceSectionProps) {
   const [data, setData] = useState<PerformanceData | null>(null);
   const [period, setPeriod] = useState("30d");
   const [loading, setLoading] = useState(true);
@@ -86,18 +92,22 @@ export function PerformanceSection({ locationId }: PerformanceSectionProps) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/dashboard/performance?locationId=${locationId}&period=${period}`
-      );
+      const params = new URLSearchParams({
+        locationId,
+        period,
+      });
+      const res = await fetch(`/api/dashboard/performance?${params}`);
       if (res.ok) {
-        setData(await res.json());
+        const result: PerformanceData = await res.json();
+        setData(result);
+        onKeywordsLoaded?.(result.searchKeywords || []);
       }
-    } catch {
-      // サイレント
+    } catch (error) {
+      console.error("[PerformanceSection] fetch error:", error);
     } finally {
       setLoading(false);
     }
-  }, [locationId, period]);
+  }, [locationId, period, onKeywordsLoaded]);
 
   useEffect(() => {
     fetchData();
@@ -119,7 +129,7 @@ export function PerformanceSection({ locationId }: PerformanceSectionProps) {
               <SelectItem value="all">全期間</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" disabled>
             期間比較
           </Button>
         </div>

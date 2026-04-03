@@ -38,6 +38,8 @@ describe("SearchKeywordsCard", () => {
     const buttons = screen.getAllByText("キーワード分析登録");
     // isTracked=falseのキーワードだけボタンがある
     expect(buttons).toHaveLength(1);
+    // ボタンはdisabled
+    expect(buttons[0].closest("button")).toBeDisabled();
   });
 
   it("番号が正しく表示される", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { GbpScoreCard } from "./gbp-score-card";
 import { PerformanceSection } from "./performance-section";
 import { ReviewSummaryCard } from "./review-summary-card";
@@ -23,23 +23,10 @@ export function DashboardContent({
 }: DashboardContentProps) {
   const [keywords, setKeywords] = useState<SearchKeyword[]>([]);
 
-  const fetchKeywords = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/dashboard/performance?locationId=${locationId}&period=30d`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setKeywords(data.searchKeywords || []);
-      }
-    } catch {
-      // サイレント
-    }
-  }, [locationId]);
-
-  useEffect(() => {
-    fetchKeywords();
-  }, [fetchKeywords]);
+  // PerformanceSectionからキーワードデータを受け取る（重複フェッチ回避）
+  const handleKeywordsLoaded = useCallback((kw: SearchKeyword[]) => {
+    setKeywords(kw);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -49,7 +36,10 @@ export function DashboardContent({
       <GbpScoreCard locationId={locationId} />
 
       {/* パフォーマンス */}
-      <PerformanceSection locationId={locationId} />
+      <PerformanceSection
+        locationId={locationId}
+        onKeywordsLoaded={handleKeywordsLoaded}
+      />
 
       {/* 評価とレビュー + 検索キーワード */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -28,14 +28,13 @@ export function ReviewSummaryCard({ locationId }: ReviewSummaryCardProps) {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(
-          `/api/dashboard/review-summary?locationId=${locationId}`
-        );
+        const params = new URLSearchParams({ locationId });
+        const res = await fetch(`/api/dashboard/review-summary?${params}`);
         if (res.ok) {
           setData(await res.json());
         }
-      } catch {
-        // サイレント
+      } catch (error) {
+        console.error("[ReviewSummaryCard] fetch error:", error);
       } finally {
         setLoading(false);
       }
@@ -93,6 +92,16 @@ export function ReviewSummaryCard({ locationId }: ReviewSummaryCardProps) {
           <span className="text-sm text-muted-foreground">
             {data.totalReviews}件のレビュー
           </span>
+        </div>
+
+        {/* 返信率 */}
+        <div className="flex items-center gap-4 mb-4 text-sm text-muted-foreground">
+          <span>返信率: {data.replyRate}%</span>
+          {data.unrepliedCount > 0 && (
+            <span className="text-orange-600">
+              未返信: {data.unrepliedCount}件
+            </span>
+          )}
         </div>
 
         {/* 星分布グラフ */}

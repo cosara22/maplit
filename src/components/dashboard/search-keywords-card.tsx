@@ -57,7 +57,7 @@ export function SearchKeywordsCard({ keywords }: SearchKeywordsCardProps) {
                   {kw.count.toLocaleString("ja-JP")}
                 </span>
                 {!kw.isTracked && (
-                  <Button variant="ghost" size="sm" className="text-xs h-7">
+                  <Button variant="ghost" size="sm" className="text-xs h-7" disabled>
                     キーワード分析登録
                   </Button>
                 )}

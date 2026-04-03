@@ -13,18 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 
-interface ScoreBreakdown {
-  basicInfo: number;
-  description: number;
-  subcategories: number;
-  photos: number;
-  hours: number;
-}
-
 interface GbpScoreData {
   totalScore: number;
   maxScore: number;
-  scoreBreakdown: ScoreBreakdown;
   missingItems: string[];
   calculatedAt: string | null;
 }
@@ -42,14 +33,13 @@ export function GbpScoreCard({ locationId }: GbpScoreCardProps) {
   useEffect(() => {
     async function fetchScore() {
       try {
-        const res = await fetch(
-          `/api/dashboard/gbp-score?locationId=${locationId}`
-        );
+        const params = new URLSearchParams({ locationId });
+        const res = await fetch(`/api/dashboard/gbp-score?${params}`);
         if (res.ok) {
           setData(await res.json());
         }
-      } catch {
-        // エラーハンドリングはサイレント（UIにはデータなし表示）
+      } catch (error) {
+        console.error("[GbpScoreCard] fetch error:", error);
       } finally {
         setLoading(false);
       }

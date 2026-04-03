@@ -75,7 +75,9 @@ describe("PerformanceSection", () => {
     await waitFor(() => {
       expect(screen.getByText("パフォーマンス")).toBeInTheDocument();
     });
-    expect(screen.getByText("期間比較")).toBeInTheDocument();
+    const compareBtn = screen.getByText("期間比較");
+    expect(compareBtn).toBeInTheDocument();
+    expect(compareBtn.closest("button")).toBeDisabled();
   });
 
   it("データ取得失敗時にデータなしメッセージを表示", async () => {

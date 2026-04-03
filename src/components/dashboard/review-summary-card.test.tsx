@@ -39,7 +39,7 @@ describe("ReviewSummaryCard", () => {
     expect(screen.getByText("評価とレビュー")).toBeInTheDocument();
   });
 
-  it("星分布バーが表示される", async () => {
+  it("返信率と未返信数を表示する", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
@@ -57,6 +57,8 @@ describe("ReviewSummaryCard", () => {
     await waitFor(() => {
       expect(screen.getByText("5件のレビュー")).toBeInTheDocument();
     });
+    expect(screen.getByText("返信率: 40%")).toBeInTheDocument();
+    expect(screen.getByText("未返信: 3件")).toBeInTheDocument();
   });
 
   it("API失敗時にデータなしメッセージを表示する", async () => {
