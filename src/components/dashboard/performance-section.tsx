@@ -24,6 +24,7 @@ import {
   MousePointer,
   Globe,
   Activity,
+  Download,
 } from "lucide-react";
 
 interface SearchKeyword {
@@ -88,6 +89,7 @@ export function PerformanceSection({
   const [data, setData] = useState<PerformanceData | null>(null);
   const [period, setPeriod] = useState("30d");
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -113,6 +115,26 @@ export function PerformanceSection({
     fetchData();
   }, [fetchData]);
 
+  const handleCsvExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ locationId, period });
+      const res = await fetch(`/api/export/performance?${params}`);
+      if (!res.ok) throw new Error("CSVダウンロードに失敗しました");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "performance.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("[PerformanceSection] CSV export error:", error);
+    } finally {
+      setExporting(false);
+    }
+  }, [locationId, period]);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -131,6 +153,15 @@ export function PerformanceSection({
           </Select>
           <Button variant="outline" size="sm" disabled>
             期間比較
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCsvExport}
+            disabled={loading || !data || exporting}
+          >
+            <Download className="w-4 h-4 mr-1" />
+            {exporting ? "出力中..." : "CSV"}
           </Button>
         </div>
       </CardHeader>
