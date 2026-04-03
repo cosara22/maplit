@@ -89,3 +89,6 @@ jobs:
 
       - name: Build
         run: pnpm build
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          NEXTAUTH_SECRET: ci-build-secret
