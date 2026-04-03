@@ -6,3 +6,436 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ============================================================
+// ENUM定義
+// ============================================================
+
+enum Plan {
+  trial
+  basic
+  pro
+}
+
+enum Role {
+  admin
+  manager
+  staff
+}
+
+enum ReplyStatus {
+  draft
+  approved
+  posted
+  failed
+}
+
+enum SyncStatus {
+  pending
+  synced
+  failed
+}
+
+enum PostSource {
+  instagram
+  gbp
+  manual
+}
+
+enum CitationStatus {
+  pending
+  submitted
+  completed
+  verified
+  failed
+}
+
+enum TamperingStatus {
+  detected
+  reviewing
+  resolved
+  ignored
+}
+
+enum IntegrationProvider {
+  google
+  instagram
+  line
+}
+
+// ============================================================
+// テナント
+// ============================================================
+
+model Tenant {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(255)
+  plan        Plan      @default(trial)
+  trialEndsAt DateTime? @map("trial_ends_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  users     User[]
+  locations Location[]
+  ngWords   NgWord[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// ユーザー・認証
+// ============================================================
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  email             String    @db.VarChar(255)
+  encryptedPassword String?   @map("encrypted_password") @db.VarChar(255)
+  name              String    @db.VarChar(255)
+  role              Role      @default(staff)
+  image             String?   @db.VarChar(500)
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  lastSignInAt      DateTime? @map("last_sign_in_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accounts Account[]
+  sessions Session[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model Account {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  provider          String    @db.VarChar(50)
+  providerAccountId String    @map("provider_account_id") @db.VarChar(255)
+  accessToken       String?   @map("access_token") @db.Text
+  refreshToken      String?   @map("refresh_token") @db.Text
+  expiresAt         DateTime? @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================================
+// 店舗
+// ============================================================
+
+model Location {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  name                String   @db.VarChar(255)
+  gbpAccountId        String?  @map("gbp_account_id") @db.VarChar(100)
+  gbpLocationId       String?  @map("gbp_location_id") @db.VarChar(100)
+  address             String?  @db.Text
+  phone               String?  @db.VarChar(20)
+  website             String?  @db.VarChar(500)
+  latitude            Decimal? @db.Decimal(10, 7)
+  longitude           Decimal? @db.Decimal(10, 7)
+  businessDescription String?  @map("business_description") @db.Text
+  category            String?  @db.VarChar(100)
+  subcategories       Json?
+  businessHours       Json?    @map("business_hours")
+  logoUrl             String?  @map("logo_url") @db.VarChar(500)
+  coverUrl            String?  @map("cover_url") @db.VarChar(500)
+  photos              Json?
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviews            Review[]
+  rankings           Ranking[]
+  posts              Post[]
+  citations          Citation[]
+  surveys            Survey[]
+  integrations       Integration[]
+  tamperingLogs      TamperingLog[]
+  gbpScore           GbpScore?
+  performanceMetrics PerformanceMetric[]
+  aiReplySettings    AiReplySettings?
+
+  @@map("locations")
+}
+
+// ============================================================
+// 外部連携
+// ============================================================
+
+model Integration {
+  id                    String              @id @default(uuid()) @db.Uuid
+  locationId            String              @map("location_id") @db.Uuid
+  provider              IntegrationProvider
+  accessTokenEncrypted  String?             @map("access_token_encrypted") @db.Text
+  refreshTokenEncrypted String?             @map("refresh_token_encrypted") @db.Text
+  tokenExpiresAt        DateTime?           @map("token_expires_at")
+  metadata              Json?
+  isActive              Boolean             @default(true) @map("is_active")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("integrations")
+}
+
+// ============================================================
+// 口コミ・返信
+// ============================================================
+
+model Review {
+  id               String    @id @default(uuid()) @db.Uuid
+  locationId       String    @map("location_id") @db.Uuid
+  gbpReviewId      String?   @unique @map("gbp_review_id") @db.VarChar(100)
+  reviewerName     String?   @map("reviewer_name") @db.VarChar(255)
+  reviewerPhotoUrl String?   @map("reviewer_photo_url") @db.VarChar(500)
+  rating           Int
+  comment          String?   @db.Text
+  translatedComment String?  @map("translated_comment") @db.Text
+  language         String?   @db.VarChar(10)
+  aioScore         Int?      @map("aio_score")
+  replyRecommended Boolean   @default(false) @map("reply_recommended")
+  isModelReview    Boolean   @default(false) @map("is_model_review")
+  reviewedAt       DateTime? @map("reviewed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  location Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  replies  ReviewReply[]
+
+  @@index([locationId, reviewedAt(sort: Desc)])
+  @@index([locationId, aioScore])
+  @@map("reviews")
+}
+
+model ReviewReply {
+  id              String      @id @default(uuid()) @db.Uuid
+  reviewId        String      @map("review_id") @db.Uuid
+  replyText       String?     @map("reply_text") @db.Text
+  aiGeneratedText String?     @map("ai_generated_text") @db.Text
+  status          ReplyStatus @default(draft)
+  repliedAt       DateTime?   @map("replied_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("review_replies")
+}
+
+// ============================================================
+// 順位履歴
+// ============================================================
+
+model Ranking {
+  id           String   @id @default(uuid()) @db.Uuid
+  locationId   String   @map("location_id") @db.Uuid
+  keyword      String   @db.VarChar(255)
+  rankPosition Int?     @map("rank_position")
+  searchEngine String   @default("google_maps") @map("search_engine") @db.VarChar(20)
+  latitude     Decimal? @db.Decimal(10, 7)
+  longitude    Decimal? @db.Decimal(10, 7)
+  measuredAt   DateTime @map("measured_at") @db.Date
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, keyword, measuredAt(sort: Desc)])
+  @@map("rankings")
+}
+
+// ============================================================
+// 投稿
+// ============================================================
+
+model Post {
+  id               String     @id @default(uuid()) @db.Uuid
+  locationId       String     @map("location_id") @db.Uuid
+  instagramPostId  String?    @map("instagram_post_id") @db.VarChar(100)
+  gbpPostId        String?    @map("gbp_post_id") @db.VarChar(100)
+  originalCaption  String?    @map("original_caption") @db.Text
+  optimizedCaption String?    @map("optimized_caption") @db.Text
+  imageUrls        Json?      @map("image_urls")
+  syncStatus       SyncStatus @default(pending) @map("sync_status")
+  source           PostSource
+  postedAt         DateTime?  @map("posted_at")
+  syncedAt         DateTime?  @map("synced_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, postedAt(sort: Desc)])
+  @@map("posts")
+}
+
+// ============================================================
+// サイテーション
+// ============================================================
+
+model Citation {
+  id               String         @id @default(uuid()) @db.Uuid
+  locationId       String         @map("location_id") @db.Uuid
+  platformName     String         @map("platform_name") @db.VarChar(100)
+  platformCategory String?        @map("platform_category") @db.VarChar(100)
+  status           CitationStatus @default(pending)
+  externalUrl      String?        @map("external_url") @db.VarChar(500)
+  submittedData    Json?          @map("submitted_data")
+  lastCheckedAt    DateTime?      @map("last_checked_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, platformName])
+  @@map("citations")
+}
+
+// ============================================================
+// アンケート
+// ============================================================
+
+model Survey {
+  id                  String   @id @default(uuid()) @db.Uuid
+  locationId          String   @map("location_id") @db.Uuid
+  title               String   @db.VarChar(255)
+  questions           Json
+  slug                String   @unique @db.VarChar(255)
+  isActive            Boolean  @default(true) @map("is_active")
+  multilingualEnabled Boolean  @default(false) @map("multilingual_enabled")
+  supportedLanguages  Json?    @map("supported_languages")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  location  Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  responses SurveyResponse[]
+
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id               String   @id @default(uuid()) @db.Uuid
+  surveyId         String   @map("survey_id") @db.Uuid
+  answers          Json
+  language         String?  @db.VarChar(10)
+  aiGeneratedReview String? @map("ai_generated_review") @db.Text
+  ipAddress        String?  @map("ip_address") @db.VarChar(45)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@map("survey_responses")
+}
+
+// ============================================================
+// NGワード
+// ============================================================
+
+model NgWord {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  word      String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ng_words")
+}
+
+// ============================================================
+// GBP完成度スコア
+// ============================================================
+
+model GbpScore {
+  id             String   @id @default(uuid()) @db.Uuid
+  locationId     String   @unique @map("location_id") @db.Uuid
+  totalScore     Int      @map("total_score")
+  scoreBreakdown Json     @map("score_breakdown")
+  missingItems   Json     @map("missing_items")
+  calculatedAt   DateTime @map("calculated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("gbp_scores")
+}
+
+// ============================================================
+// パフォーマンス指標
+// ============================================================
+
+model PerformanceMetric {
+  id                String   @id @default(uuid()) @db.Uuid
+  locationId        String   @map("location_id") @db.Uuid
+  periodStart       DateTime @map("period_start") @db.Date
+  periodEnd         DateTime @map("period_end") @db.Date
+  searchCount       Int      @default(0) @map("search_count")
+  viewCount         Int      @default(0) @map("view_count")
+  directionRequests Int      @default(0) @map("direction_requests")
+  callClickRate     Float    @default(0) @map("call_click_rate")
+  phoneCalls        Int      @default(0) @map("phone_calls")
+  callButtonClicks  Int      @default(0) @map("call_button_clicks")
+  websiteClicks     Int      @default(0) @map("website_clicks")
+  totalActions      Int      @default(0) @map("total_actions")
+  searchKeywords    Json?    @map("search_keywords")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, periodStart])
+  @@map("performance_metrics")
+}
+
+// ============================================================
+// 改ざん検知ログ
+// ============================================================
+
+model TamperingLog {
+  id            String          @id @default(uuid()) @db.Uuid
+  locationId    String          @map("location_id") @db.Uuid
+  fieldName     String          @map("field_name") @db.VarChar(255)
+  originalValue String?         @map("original_value") @db.Text
+  tamperedValue String?         @map("tampered_value") @db.Text
+  status        TamperingStatus @default(detected)
+  notified      Boolean         @default(false)
+  detectedAt    DateTime        @map("detected_at")
+  resolvedAt    DateTime?       @map("resolved_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("tampering_logs")
+}
+
+// ============================================================
+// AI返信設定
+// ============================================================
+
+model AiReplySettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  locationId            String   @unique @map("location_id") @db.Uuid
+  replyKeywords         Json?    @map("reply_keywords")
+  replyStyleInstructions String? @map("reply_style_instructions") @db.Text
+  replyTone             String?  @map("reply_tone") @db.VarChar(50)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_reply_settings")
+}
