@@ -40,82 +40,91 @@ describe("calculateGbpScore", () => {
   });
 
   // UT-SCORE-02: ビジネス説明未入力の場合減点
-  it("ビジネス説明未入力の場合減点される", () => {
+  it("ビジネス説明未入力の場合 -20点", () => {
     const location = createFullLocation();
     location.businessDescription = null;
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(80); // 100 - 説明文(20) = 80
+    expect(result.scoreBreakdown.description.score).toBe(0);
     expect(result.missingItems).toContain("ビジネスの説明");
   });
 
   // UT-SCORE-03: ビジネス説明200文字未満の場合減点
-  it("ビジネス説明200文字未満の場合減点される", () => {
+  it("ビジネス説明200文字未満の場合部分点", () => {
     const location = createFullLocation();
-    location.businessDescription = "短い説明文です";
+    location.businessDescription = "短い説明文です"; // 7文字
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    // 部分点: floor(7/200 * 10) = 0
+    expect(result.totalScore).toBe(80); // 100 - 20 + 0
+    expect(result.scoreBreakdown.description.score).toBe(0);
     expect(result.missingItems).toContain("ビジネスの説明（200文字以上）");
   });
 
   // UT-SCORE-04: ロゴ未設定の場合減点
-  it("ロゴ未設定の場合減点される", () => {
+  it("ロゴ未設定の場合 -8点", () => {
     const location = createFullLocation();
     location.logoUrl = null;
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(92); // 100 - ロゴ(8) = 92
+    expect(result.scoreBreakdown.photos.score).toBe(17); // 25 - 8 = 17
     expect(result.missingItems).toContain("ロゴ");
   });
 
   // UT-SCORE-05: カバー写真未設定の場合減点
-  it("カバー写真未設定の場合減点される", () => {
+  it("カバー写真未設定の場合 -7点", () => {
     const location = createFullLocation();
     location.coverUrl = null;
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(93); // 100 - カバー(7) = 93
+    expect(result.scoreBreakdown.photos.score).toBe(18); // 25 - 7 = 18
     expect(result.missingItems).toContain("カバー写真");
   });
 
   // UT-SCORE-06: サブカテゴリ未設定の場合減点
-  it("サブカテゴリ未設定の場合減点される", () => {
+  it("サブカテゴリ未設定の場合 -10点", () => {
     const location = createFullLocation();
     location.subcategories = [];
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(90); // 100 - サブカテゴリ(10) = 90
+    expect(result.scoreBreakdown.subcategories.score).toBe(0);
     expect(result.missingItems).toContain("サブカテゴリー");
   });
 
   // UT-SCORE-07: 営業時間未設定の場合減点
-  it("営業時間未設定の場合減点される", () => {
+  it("営業時間未設定の場合 -10点", () => {
     const location = createFullLocation();
     location.businessHours = null;
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(90); // 100 - 営業時間(10) = 90
+    expect(result.scoreBreakdown.businessHours.score).toBe(0);
     expect(result.missingItems).toContain("営業時間");
   });
 
   // UT-SCORE-08: 電話番号未設定の場合減点
-  it("電話番号未設定の場合減点される", () => {
+  it("電話番号未設定の場合 -7点", () => {
     const location = createFullLocation();
     location.phone = null;
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(93); // 100 - 電話番号(7) = 93
+    expect(result.scoreBreakdown.basicInfo.score).toBe(28); // 35 - 7 = 28
     expect(result.missingItems).toContain("電話番号");
   });
 
   // UT-SCORE-09: 写真0枚の場合減点
-  it("写真0枚の場合減点される", () => {
+  it("写真0枚の場合 -10点", () => {
     const location = createFullLocation();
     location.photos = [];
     const result = calculateGbpScore(location);
 
-    expect(result.totalScore).toBeLessThan(100);
+    expect(result.totalScore).toBe(90); // 100 - 通常写真(10) = 90
+    expect(result.scoreBreakdown.photos.score).toBe(15); // logo(8) + cover(7) + 0
     expect(result.missingItems).toContain("写真");
   });
 

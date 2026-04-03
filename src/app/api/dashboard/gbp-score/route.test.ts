@@ -18,10 +18,13 @@ vi.mock("@/lib/prisma-tenant", () => ({
   }),
 }));
 
+const TEST_LOCATION_ID = "00000000-0000-0000-0000-000000000001";
+const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+
 // テスト用ロケーションデータ
 const fullLocation = {
-  id: "loc-001",
-  tenantId: "tenant-001",
+  id: TEST_LOCATION_ID,
+  tenantId: TEST_TENANT_ID,
   name: "しん薬局",
   address: "東京都渋谷区神南1-2-3",
   phone: "03-1234-5678",
@@ -59,13 +62,13 @@ describe("GET /api/dashboard/gbp-score", () => {
 
   it("未認証の場合401を返す", async () => {
     mockAuth.mockResolvedValue(null);
-    const res = await GET(createGetRequest({ locationId: "loc-001" }));
+    const res = await GET(createGetRequest({ locationId: TEST_LOCATION_ID }));
     expect(res.status).toBe(401);
   });
 
   it("locationId未指定の場合400を返す", async () => {
     mockAuth.mockResolvedValue({
-      user: { tenantId: "tenant-001" },
+      user: { tenantId: TEST_TENANT_ID },
     });
     const res = await GET(createGetRequest({}));
     expect(res.status).toBe(400);
@@ -73,16 +76,20 @@ describe("GET /api/dashboard/gbp-score", () => {
 
   it("存在しない店舗の場合404を返す", async () => {
     mockAuth.mockResolvedValue({
-      user: { tenantId: "tenant-001" },
+      user: { tenantId: TEST_TENANT_ID },
     });
     mockFindFirst.mockResolvedValue(null);
-    const res = await GET(createGetRequest({ locationId: "unknown" }));
+    const res = await GET(
+      createGetRequest({
+        locationId: "00000000-0000-0000-0000-000000000099",
+      })
+    );
     expect(res.status).toBe(404);
   });
 
   it("保存済みスコアがある場合そのまま返す", async () => {
     mockAuth.mockResolvedValue({
-      user: { tenantId: "tenant-001" },
+      user: { tenantId: TEST_TENANT_ID },
     });
     const savedScore = {
       totalScore: 80,
@@ -92,7 +99,7 @@ describe("GET /api/dashboard/gbp-score", () => {
     };
     mockFindFirst.mockResolvedValue({ ...fullLocation, gbpScore: savedScore });
 
-    const res = await GET(createGetRequest({ locationId: "loc-001" }));
+    const res = await GET(createGetRequest({ locationId: TEST_LOCATION_ID }));
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.totalScore).toBe(80);
@@ -101,11 +108,11 @@ describe("GET /api/dashboard/gbp-score", () => {
 
   it("保存済みスコアがない場合リアルタイム算出する", async () => {
     mockAuth.mockResolvedValue({
-      user: { tenantId: "tenant-001" },
+      user: { tenantId: TEST_TENANT_ID },
     });
     mockFindFirst.mockResolvedValue({ ...fullLocation, gbpScore: null });
 
-    const res = await GET(createGetRequest({ locationId: "loc-001" }));
+    const res = await GET(createGetRequest({ locationId: TEST_LOCATION_ID }));
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.totalScore).toBe(100);
@@ -121,21 +128,63 @@ describe("POST /api/dashboard/gbp-score", () => {
 
   it("未認証の場合401を返す", async () => {
     mockAuth.mockResolvedValue(null);
-    const res = await POST(createPostRequest({ locationId: "loc-001" }));
+    const res = await POST(createPostRequest({ locationId: TEST_LOCATION_ID }));
     expect(res.status).toBe(401);
   });
 
   it("locationId未指定の場合400を返す", async () => {
     mockAuth.mockResolvedValue({
-      user: { tenantId: "tenant-001" },
+      user: { tenantId: TEST_TENANT_ID },
     });
     const res = await POST(createPostRequest({}));
     expect(res.status).toBe(400);
   });
 
+  it("存在しない店舗の場合404を返す", async () => {
+    mockAuth.mockResolvedValue({
+      user: { tenantId: TEST_TENANT_ID },
+    });
+    mockFindFirst.mockResolvedValue(null);
+    const res = await POST(
+      createPostRequest({
+        locationId: "00000000-0000-0000-0000-000000000099",
+      })
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("不正なJSONの場合400を返す", async () => {
+    mockAuth.mockResolvedValue({
+      user: { tenantId: TEST_TENANT_ID },
+    });
+    const req = new NextRequest("http://localhost/api/dashboard/gbp-score", {
+      method: "POST",
+      body: "invalid-json",
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("locationIdが数値の場合400を返す", async () => {
+    mockAuth.mockResolvedValue({
+      user: { tenantId: TEST_TENANT_ID },
+    });
+    const res = await POST(createPostRequest({ locationId: 12345 }));
+    expect(res.status).toBe(400);
+  });
+
+  it("locationIdがUUID形式でない場合400を返す", async () => {
+    mockAuth.mockResolvedValue({
+      user: { tenantId: TEST_TENANT_ID },
+    });
+    const res = await POST(createPostRequest({ locationId: "not-a-uuid" }));
+    expect(res.status).toBe(400);
+  });
+
   it("スコアを計算してDBに保存する", async () => {
     mockAuth.mockResolvedValue({
-      user: { tenantId: "tenant-001" },
+      user: { tenantId: TEST_TENANT_ID },
     });
     mockFindFirst.mockResolvedValue(fullLocation);
     mockUpsert.mockImplementation(({ create }) => ({
@@ -145,7 +194,7 @@ describe("POST /api/dashboard/gbp-score", () => {
       updatedAt: new Date(),
     }));
 
-    const res = await POST(createPostRequest({ locationId: "loc-001" }));
+    const res = await POST(createPostRequest({ locationId: TEST_LOCATION_ID }));
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.totalScore).toBe(100);

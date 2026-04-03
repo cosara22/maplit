@@ -78,6 +78,14 @@ function parseJsonArray(value: unknown): unknown[] {
   return [];
 }
 
+/** 営業時間が有効に設定されているか判定する */
+function isNonEmptyBusinessHours(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return Object.keys(value as Record<string, unknown>).length > 0;
+}
+
 /** GBP完成度スコアを算出する */
 export function calculateGbpScore(location: LocationForScore): GbpScoreResult {
   const missingItems: string[] = [];
@@ -149,16 +157,7 @@ export function calculateGbpScore(location: LocationForScore): GbpScoreResult {
 
   // --- 営業時間 (10点) ---
   let businessHoursScore = 0;
-  if (
-    location.businessHours !== null &&
-    location.businessHours !== undefined &&
-    !(
-      typeof location.businessHours === "object" &&
-      !Array.isArray(location.businessHours) &&
-      Object.keys(location.businessHours as Record<string, unknown>).length ===
-        0
-    )
-  ) {
+  if (isNonEmptyBusinessHours(location.businessHours)) {
     businessHoursScore = SCORES.businessHours.max;
   } else {
     missingItems.push("営業時間");
