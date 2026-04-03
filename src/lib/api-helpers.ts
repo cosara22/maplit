@@ -81,6 +81,53 @@ export async function requireLocation(
 }
 
 /**
+ * reviewIdのバリデーション。
+ * 不正な場合はNextResponseを返し、正常な場合はnullを返す。
+ */
+export function validateReviewId(
+  reviewId: string | null | undefined
+): NextResponse | null {
+  if (!reviewId) {
+    return NextResponse.json(
+      { error: "reviewIdは必須です", code: "MISSING_REVIEW_ID" },
+      { status: 400 }
+    );
+  }
+  if (!UUID_REGEX.test(reviewId)) {
+    return NextResponse.json(
+      { error: "reviewIdの形式が不正です", code: "INVALID_REVIEW_ID" },
+      { status: 400 }
+    );
+  }
+  return null;
+}
+
+/**
+ * 口コミの存在とテナント所有権を検証（locationリレーション込み）。
+ * 見つからない場合はNextResponseを返す。
+ */
+export async function requireReview(
+  db: TenantPrismaClient,
+  reviewId: string,
+  include?: Record<string, boolean | object>
+) {
+  const review = await db.review.findFirst({
+    where: { id: reviewId },
+    include: {
+      location: true,
+      ...include,
+    },
+  });
+  if (!review) {
+    return NextResponse.json(
+      { error: "口コミが見つかりません", code: "REVIEW_NOT_FOUND" },
+      { status: 404 }
+    );
+  }
+  return review;
+}
+
+/**
  * APIエラーログ（本番環境ではスタックトレースを除外）
  */
 export function logApiError(tag: string, error: unknown) {
