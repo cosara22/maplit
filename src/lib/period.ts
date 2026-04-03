@@ -1,5 +1,5 @@
 /** 有効な期間パラメータ */
-export const VALID_PERIODS = ["30d", "90d", "1y", "all"] as const;
+export const VALID_PERIODS = ["7d", "30d", "90d", "1y", "all"] as const;
 export type Period = (typeof VALID_PERIODS)[number];
 
 /** 期間パラメータのホワイトリスト検証 */
@@ -10,6 +10,8 @@ export function isValidPeriod(value: string): value is Period {
 /** 期間パラメータから日数を計算。"all" の場合は null を返す。 */
 export function getPeriodDays(period: Period): number | null {
   switch (period) {
+    case "7d":
+      return 7;
     case "30d":
       return 30;
     case "90d":
