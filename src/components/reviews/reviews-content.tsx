@@ -57,14 +57,19 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // 統計データ取得
   useEffect(() => {
     async function fetchStats() {
-      const params = new URLSearchParams({ locationId });
-      const res = await fetch(`/api/dashboard/review-summary?${params}`);
-      if (res.ok) {
-        setStats(await res.json());
+      try {
+        const params = new URLSearchParams({ locationId });
+        const res = await fetch(`/api/dashboard/review-summary?${params}`);
+        if (res.ok) {
+          setStats(await res.json());
+        }
+      } catch {
+        // 統計取得失敗は致命的でないため無視
       }
     }
     fetchStats();
@@ -73,6 +78,7 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
   // 口コミ一覧取得
   const fetchReviews = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams({
       locationId,
       filter,
@@ -83,14 +89,21 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
     if (search) params.set("search", search);
     if (period) params.set("period", period);
 
-    const res = await fetch(`/api/reviews?${params}`);
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/reviews?${params}`);
+      if (!res.ok) {
+        setError("口コミの取得に失敗しました");
+        return;
+      }
       const data: ReviewsResponse = await res.json();
       setReviews(data.reviews);
       setTotal(data.total);
       setTotalPages(data.totalPages);
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [locationId, filter, sort, search, period, page]);
 
   useEffect(() => {
@@ -137,6 +150,13 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
         onSearchChange={handleSearchChange}
         onPeriodChange={handlePeriodChange}
       />
+
+      {/* エラー表示 */}
+      {error && (
+        <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* 口コミ一覧 */}
       {loading ? (

@@ -70,6 +70,33 @@ export async function PUT(request: NextRequest) {
     const locationResult = await requireLocation(db, locationId!);
     if (locationResult instanceof NextResponse) return locationResult;
 
+    // replyKeywordsバリデーション
+    if (replyKeywords !== undefined) {
+      if (
+        !Array.isArray(replyKeywords) ||
+        !replyKeywords.every((k) => typeof k === "string")
+      ) {
+        return NextResponse.json(
+          { error: "replyKeywordsは文字列配列である必要があります", code: "INVALID_KEYWORDS" },
+          { status: 400 }
+        );
+      }
+      if (replyKeywords.length > 50 || replyKeywords.some((k) => k.length > 100)) {
+        return NextResponse.json(
+          { error: "キーワードの数または長さが上限を超えています", code: "KEYWORDS_TOO_LONG" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // replyStyleInstructionsバリデーション
+    if (replyStyleInstructions !== undefined && replyStyleInstructions.length > 2000) {
+      return NextResponse.json(
+        { error: "返信スタイル指示は2000文字以内にしてください", code: "INSTRUCTIONS_TOO_LONG" },
+        { status: 400 }
+      );
+    }
+
     // replyToneバリデーション
     const validTones = ["polite", "friendly", "formal"];
     if (replyTone && !validTones.includes(replyTone)) {
@@ -89,9 +116,7 @@ export async function PUT(request: NextRequest) {
         replyTone: replyTone ?? "polite",
       },
       update: {
-        ...(replyKeywords !== undefined && {
-          replyKeywords: JSON.parse(JSON.stringify(replyKeywords)),
-        }),
+        ...(replyKeywords !== undefined && { replyKeywords }),
         ...(replyStyleInstructions !== undefined && { replyStyleInstructions }),
         ...(replyTone !== undefined && { replyTone }),
       },

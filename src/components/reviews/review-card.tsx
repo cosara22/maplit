@@ -110,14 +110,16 @@ export function ReviewCard({ review }: ReviewCardProps) {
         </div>
       )}
 
-      {/* アクションボタン */}
+      {/* アクションボタン（Issue #8で機能接続予定） */}
       <div className="mt-3 flex items-center gap-2 justify-end">
         {!hasReply && (
           <>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled title="準備中">
               AI返信コピー
             </Button>
-            <Button size="sm">返信する</Button>
+            <Button size="sm" disabled title="準備中">
+              返信する
+            </Button>
           </>
         )}
       </div>

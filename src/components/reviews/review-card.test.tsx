@@ -36,10 +36,14 @@ describe("ReviewCard", () => {
     expect(screen.getByText("返信推奨")).toBeInTheDocument();
   });
 
-  it("未返信の場合アクションボタンを表示する", () => {
+  it("未返信の場合アクションボタンを表示する（disabled）", () => {
     render(<ReviewCard review={baseReview} />);
-    expect(screen.getByText("AI返信コピー")).toBeInTheDocument();
-    expect(screen.getByText("返信する")).toBeInTheDocument();
+    const aiButton = screen.getByText("AI返信コピー").closest("button");
+    const replyButton = screen.getByText("返信する").closest("button");
+    expect(aiButton).toBeInTheDocument();
+    expect(replyButton).toBeInTheDocument();
+    expect(aiButton).toBeDisabled();
+    expect(replyButton).toBeDisabled();
   });
 
   it("返信済みの場合返信内容を表示する", () => {

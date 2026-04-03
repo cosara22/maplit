@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     // パラメータ解析
     const filter = params.get("filter") ?? "all";
     const sort = params.get("sort") ?? "newest";
-    const search = params.get("search") ?? "";
+    const search = (params.get("search") ?? "").slice(0, 200);
     const period = params.get("period") ?? "";
     const page = Math.max(1, parseInt(params.get("page") ?? "1", 10) || 1);
     const limit = Math.min(

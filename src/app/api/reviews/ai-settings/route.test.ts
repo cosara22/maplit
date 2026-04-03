@@ -178,4 +178,41 @@ describe("PUT /api/reviews/ai-settings", () => {
     const data = await res.json();
     expect(data.code).toBe("INVALID_JSON");
   });
+
+  it("replyKeywordsが文字列配列でない場合400を返す", async () => {
+    const res = await PUT(
+      createPutRequest({
+        locationId: TEST_LOCATION_ID,
+        replyKeywords: [123, { nested: true }],
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.code).toBe("INVALID_KEYWORDS");
+  });
+
+  it("replyKeywordsが50件を超える場合400を返す", async () => {
+    const tooManyKeywords = Array.from({ length: 51 }, (_, i) => `kw${i}`);
+    const res = await PUT(
+      createPutRequest({
+        locationId: TEST_LOCATION_ID,
+        replyKeywords: tooManyKeywords,
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.code).toBe("KEYWORDS_TOO_LONG");
+  });
+
+  it("replyStyleInstructionsが2000文字を超える場合400を返す", async () => {
+    const res = await PUT(
+      createPutRequest({
+        locationId: TEST_LOCATION_ID,
+        replyStyleInstructions: "あ".repeat(2001),
+      })
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.code).toBe("INSTRUCTIONS_TOO_LONG");
+  });
 });

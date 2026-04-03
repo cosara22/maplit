@@ -23,6 +23,7 @@ export function AiReplySettingsCard({ locationId }: AiReplySettingsCardProps) {
   const [styleInstructions, setStyleInstructions] = useState("");
   const [newKeyword, setNewKeyword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSettings() {
@@ -52,21 +53,29 @@ export function AiReplySettingsCard({ locationId }: AiReplySettingsCardProps) {
 
   const handleSave = async () => {
     setSaving(true);
-    const res = await fetch("/api/reviews/ai-settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        locationId,
-        replyKeywords: keywords,
-        replyStyleInstructions: styleInstructions,
-      }),
-    });
-    if (res.ok) {
-      const data: AiReplySettings = await res.json();
-      setSettings(data);
-      setEditing(false);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/reviews/ai-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locationId,
+          replyKeywords: keywords,
+          replyStyleInstructions: styleInstructions,
+        }),
+      });
+      if (res.ok) {
+        const data: AiReplySettings = await res.json();
+        setSettings(data);
+        setEditing(false);
+      } else {
+        setSaveError("保存に失敗しました");
+      }
+    } catch {
+      setSaveError("通信エラーが発生しました");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleCancel = () => {
@@ -153,6 +162,10 @@ export function AiReplySettingsCard({ locationId }: AiReplySettingsCardProps) {
               placeholder="返信のトーンや内容に関する指示を入力してください"
             />
           </div>
+
+          {saveError && (
+            <p className="text-sm text-red-600">{saveError}</p>
+          )}
 
           <div className="flex gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={handleCancel}>
