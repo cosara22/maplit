@@ -14,6 +14,7 @@ const TENANT_MODELS = [
 const LOCATION_SCOPED_MODELS = [
   "Review",
   "ReviewReply",
+  "Keyword",
   "Ranking",
   "Post",
   "Citation",

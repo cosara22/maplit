@@ -163,6 +163,7 @@ model Location {
 
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews            Review[]
+  keywords           Keyword[]
   rankings           Ranking[]
   posts              Post[]
   citations          Citation[]
@@ -241,6 +242,24 @@ model ReviewReply {
 }
 
 // ============================================================
+// キーワード管理
+// ============================================================
+
+model Keyword {
+  id         String   @id @default(uuid()) @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  keyword    String   @db.VarChar(255)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, keyword])
+  @@map("keywords")
+}
+
+// ============================================================
 // 順位履歴
 // ============================================================
 
@@ -257,6 +276,7 @@ model Ranking {
 
   location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
+  @@unique([locationId, keyword, measuredAt])
   @@index([locationId, keyword, measuredAt(sort: Desc)])
   @@map("rankings")
 }
