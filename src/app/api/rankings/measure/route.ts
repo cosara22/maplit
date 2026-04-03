@@ -10,6 +10,9 @@ import {
   isSerpApiConfigured,
   measureMultipleKeywords,
 } from "@/lib/serpapi";
+import { prisma } from "@/lib/prisma";
+
+const MIN_MEASURE_INTERVAL_MS = 60 * 60 * 1000; // 1時間
 
 // POST /api/rankings/measure — 手動計測トリガー
 export async function POST(request: NextRequest) {
@@ -65,6 +68,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // レート制限: 直近の計測から1時間以内は再計測不可
+    const lastMeasurement = await db.ranking.findFirst({
+      where: { locationId: locationId as string },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    if (lastMeasurement) {
+      const elapsed = Date.now() - lastMeasurement.createdAt.getTime();
+      if (elapsed < MIN_MEASURE_INTERVAL_MS) {
+        const remainMin = Math.ceil((MIN_MEASURE_INTERVAL_MS - elapsed) / 60000);
+        return NextResponse.json(
+          {
+            error: `計測間隔が短すぎます。約${remainMin}分後に再試行してください`,
+            code: "RATE_LIMITED",
+          },
+          { status: 429 }
+        );
+      }
+    }
+
     // アクティブなキーワードを取得
     const keywords = await db.keyword.findMany({
       where: { locationId: locationId as string, isActive: true },
@@ -86,33 +109,37 @@ export async function POST(request: NextRequest) {
       location.gbpLocationId
     );
 
-    // 計測結果をDBに保存（1日1レコード、同日の再計��は上書き）
+    // 計測結果をDBに一括保存（1日1レコード、同日の再計測は上書き）
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    for (const result of results) {
-      await db.ranking.upsert({
-        where: {
-          locationId_keyword_measuredAt: {
-            locationId: locationId as string,
-            keyword: result.keyword,
-            measuredAt: today,
-          },
-        },
-        update: {
-          rankPosition: result.rankPosition,
-          latitude: result.latitude,
-          longitude: result.longitude,
-        },
-        create: {
-          locationId: locationId as string,
-          keyword: result.keyword,
-          rankPosition: result.rankPosition,
-          latitude: result.latitude,
-          longitude: result.longitude,
-          measuredAt: today,
-        },
-      });
+    if (results.length > 0) {
+      await prisma.$transaction(
+        results.map((result) =>
+          prisma.ranking.upsert({
+            where: {
+              locationId_keyword_measuredAt: {
+                locationId: locationId as string,
+                keyword: result.keyword,
+                measuredAt: today,
+              },
+            },
+            update: {
+              rankPosition: result.rankPosition,
+              latitude: result.latitude,
+              longitude: result.longitude,
+            },
+            create: {
+              locationId: locationId as string,
+              keyword: result.keyword,
+              rankPosition: result.rankPosition,
+              latitude: result.latitude,
+              longitude: result.longitude,
+              measuredAt: today,
+            },
+          })
+        )
+      );
     }
 
     return NextResponse.json({

@@ -27,13 +27,13 @@ export async function DELETE(
       );
     }
 
-    // キーワードの存在確認（テナント分離はlocation経由で自動）
+    // キーワードの存在確認 + テナント所有権検証（location経由）
     const keyword = await db.keyword.findFirst({
       where: { id },
-      include: { location: true },
+      include: { location: { select: { id: true, tenantId: true } } },
     });
 
-    if (!keyword) {
+    if (!keyword || keyword.location.tenantId !== authResult.tenantId) {
       return NextResponse.json(
         { error: "キーワードが見つかりません", code: "KEYWORD_NOT_FOUND" },
         { status: 404 }

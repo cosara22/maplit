@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
     });
 
     // 各キーワードの最新順位を取得
+    // NOTE: キーワード上限20件のため最大41クエリ（Promise.allで並列実行）
+    // 将来的にはraw queryでの一括取得を検討
     const keywordsWithRank = await Promise.all(
       keywords.map(async (kw) => {
         const latestRanking = await db.ranking.findFirst({

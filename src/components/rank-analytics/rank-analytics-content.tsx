@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -56,6 +56,8 @@ export function RankAnalyticsContent({
   const [measureResult, setMeasureResult] = useState<string | null>(null);
   const [selectedKeywordId, setSelectedKeywordId] = useState<string | null>(null);
   const [period, setPeriod] = useState("30d");
+  const selectedKeywordIdRef = useRef(selectedKeywordId);
+  selectedKeywordIdRef.current = selectedKeywordId;
 
   const fetchKeywords = useCallback(async () => {
     try {
@@ -64,8 +66,8 @@ export function RankAnalyticsContent({
       if (res.ok) {
         const data = await res.json();
         setKeywords(data.keywords);
-        // 最初のキーワードを自動選択
-        if (data.keywords.length > 0 && !selectedKeywordId) {
+        // 最初のキーワードを自動選択（ref経由で無限ループ防止）
+        if (data.keywords.length > 0 && !selectedKeywordIdRef.current) {
           setSelectedKeywordId(data.keywords[0].id);
         }
       }
@@ -74,7 +76,7 @@ export function RankAnalyticsContent({
     } finally {
       setLoading(false);
     }
-  }, [locationId, selectedKeywordId]);
+  }, [locationId]);
 
   useEffect(() => {
     fetchKeywords();

@@ -59,6 +59,19 @@ describe("DELETE /api/rankings/keywords/:id", () => {
     expect(data.code).toBe("KEYWORD_NOT_FOUND");
   });
 
+  it("他テナントのキーワードの場合404を返す", async () => {
+    mockFindFirst.mockResolvedValue({
+      id: TEST_KEYWORD_ID,
+      keyword: "薬局",
+      location: { id: "loc-id", tenantId: "other-tenant-id" },
+    });
+    const res = await callDelete(TEST_KEYWORD_ID);
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.code).toBe("KEYWORD_NOT_FOUND");
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
   it("正常にキーワードが削除される", async () => {
     mockFindFirst.mockResolvedValue({
       id: TEST_KEYWORD_ID,

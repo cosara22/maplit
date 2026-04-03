@@ -3,6 +3,7 @@
 
 const SERPAPI_BASE_URL = "https://serpapi.com/search.json";
 const MAX_RESULTS_TO_CHECK = 20;
+const REQUEST_TIMEOUT_MS = 30000;
 
 interface SerpApiLocalResult {
   place_id?: string;
@@ -66,7 +67,17 @@ export async function measureKeywordRank(
     api_key: apiKey,
   });
 
-  const response = await fetch(`${SERPAPI_BASE_URL}?${params}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${SERPAPI_BASE_URL}?${params}`, {
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(
