@@ -13,7 +13,6 @@ Object.assign(navigator, {
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-const TEST_LOCATION_ID = "00000000-0000-0000-0000-000000000001";
 const mockOnReviewUpdated = vi.fn();
 
 const baseReview: ReviewData = {
@@ -33,17 +32,14 @@ const baseReview: ReviewData = {
 
 function renderCard(review: ReviewData = baseReview) {
   return render(
-    <ReviewCard
-      review={review}
-      locationId={TEST_LOCATION_ID}
-      onReviewUpdated={mockOnReviewUpdated}
-    />
+    <ReviewCard review={review} onReviewUpdated={mockOnReviewUpdated} />
   );
 }
 
 describe("ReviewCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
   });
 
   it("投稿者名と星評価を表示する", () => {
@@ -138,24 +134,13 @@ describe("ReviewCard", () => {
     expect(mockWriteText).toHaveBeenCalledWith("ありがとうございます。");
   });
 
-  it("「返信する」クリックで返信フォームが表示される", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        generatedReply: "ありがとうございます。",
-        tokensUsed: { input: 100, output: 50 },
-      }),
-    });
-
+  it("「返信する」クリックで返信フォームが表示される", () => {
     renderCard();
     fireEvent.click(screen.getByText("返信する"));
 
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/AI返信を生成中|返信文を入力/)
-      ).toBeInTheDocument();
-    });
-
+    expect(
+      screen.getByPlaceholderText("返信文を入力してください")
+    ).toBeInTheDocument();
     expect(screen.getByText("キャンセル")).toBeInTheDocument();
     expect(screen.getByText("投稿")).toBeInTheDocument();
   });

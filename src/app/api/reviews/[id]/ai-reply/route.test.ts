@@ -40,10 +40,14 @@ vi.mock("@/lib/openai", () => ({
 const mockAiReplySettingsFindUnique = vi.fn();
 const mockNgWordFindMany = vi.fn();
 const mockReviewReplyCreate = vi.fn();
+const mockReviewReplyFindFirst = vi.fn();
 const mockDb = {
   aiReplySettings: { findUnique: mockAiReplySettingsFindUnique },
   ngWord: { findMany: mockNgWordFindMany },
-  reviewReply: { create: mockReviewReplyCreate },
+  reviewReply: {
+    create: mockReviewReplyCreate,
+    findFirst: mockReviewReplyFindFirst,
+  },
 };
 
 const TEST_REVIEW_ID = "00000000-0000-0000-0000-000000000001";
@@ -76,9 +80,11 @@ describe("POST /api/reviews/[id]/ai-reply", () => {
       replyStyleInstructions: "丁寧に",
     });
     mockNgWordFindMany.mockResolvedValue([{ word: "最悪" }]);
+    mockReviewReplyFindFirst.mockResolvedValue(null);
     mockGenerateReviewReply.mockResolvedValue({
       generatedReply: "口コミありがとうございます。",
       tokensUsed: { input: 100, output: 50 },
+      ngWordsDetected: false,
     });
     mockReviewReplyCreate.mockResolvedValue({ id: "rr-001" });
   });
@@ -138,6 +144,25 @@ describe("POST /api/reviews/[id]/ai-reply", () => {
         status: "draft",
       },
     });
+  });
+
+  it("既存draftがある場合はキャッシュを返す", async () => {
+    mockReviewReplyFindFirst.mockResolvedValue({
+      id: "rr-existing",
+      aiGeneratedText: "既存のドラフト返信",
+      status: "draft",
+    });
+
+    const res = await POST(new Request("http://localhost"), {
+      params: Promise.resolve({ id: TEST_REVIEW_ID }),
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.generatedReply).toBe("既存のドラフト返信");
+    expect(data.cached).toBe(true);
+    // OpenAI APIは呼ばれない
+    expect(mockGenerateReviewReply).not.toHaveBeenCalled();
   });
 
   it("AiReplySettingsが未設定の場合デフォルト値で生成する", async () => {

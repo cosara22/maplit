@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  buildReplyPrompt,
+  buildSystemPrompt,
+  buildUserPrompt,
+  containsNgWords,
   removeNgWords,
   generateReviewReply,
   resetClient,
@@ -12,6 +14,12 @@ const mockCreate = vi.fn();
 vi.mock("openai", () => ({
   default: class {
     chat = { completions: { create: mockCreate } };
+  },
+  APIError: class extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "APIError";
+    }
   },
 }));
 
@@ -26,42 +34,61 @@ const baseInput: GenerateReplyInput = {
   comment: "とても親切な対応でした。",
 };
 
-describe("buildReplyPrompt", () => {
-  it("店舗情報・キーワード・トーンを含むプロンプトを生成する", () => {
-    const prompt = buildReplyPrompt(baseInput);
+describe("buildSystemPrompt", () => {
+  it("店舗情報・キーワード・トーン・NGワードを含む", () => {
+    const prompt = buildSystemPrompt(baseInput);
     expect(prompt).toContain("シング薬局");
     expect(prompt).toContain("調剤薬局");
     expect(prompt).toContain("処方箋、健康相談");
     expect(prompt).toContain("polite");
     expect(prompt).toContain("丁寧にお礼を述べてください");
-    expect(prompt).toContain("とても親切な対応でした。");
-    expect(prompt).toContain("5★");
     expect(prompt).toContain("最悪、クレーム");
+    // 口コミ本文はsystemに含めない
+    expect(prompt).not.toContain("とても親切な対応でした。");
   });
 
   it("低評価（1-2★）の場合は謝罪指示を含む", () => {
-    const prompt = buildReplyPrompt({ ...baseInput, rating: 1 });
+    const prompt = buildSystemPrompt({ ...baseInput, rating: 1 });
     expect(prompt).toContain("謝罪から始め");
   });
 
   it("高評価（3-5★）の場合は謝罪指示を含まない", () => {
-    const prompt = buildReplyPrompt({ ...baseInput, rating: 3 });
+    const prompt = buildSystemPrompt({ ...baseInput, rating: 3 });
     expect(prompt).not.toContain("謝罪から始め");
   });
 
   it("キーワードが空の場合「なし」と表示する", () => {
-    const prompt = buildReplyPrompt({ ...baseInput, replyKeywords: [] });
+    const prompt = buildSystemPrompt({ ...baseInput, replyKeywords: [] });
     expect(prompt).toContain("特徴: なし");
   });
 
   it("カテゴリがnullの場合「未設定」と表示する", () => {
-    const prompt = buildReplyPrompt({ ...baseInput, category: null });
+    const prompt = buildSystemPrompt({ ...baseInput, category: null });
     expect(prompt).toContain("カテゴリ: 未設定");
   });
 
   it("NGワードが空の場合、NGワード行を含まない", () => {
-    const prompt = buildReplyPrompt({ ...baseInput, ngWords: [] });
+    const prompt = buildSystemPrompt({ ...baseInput, ngWords: [] });
     expect(prompt).not.toContain("NGワード");
+  });
+});
+
+describe("buildUserPrompt", () => {
+  it("口コミ内容をコードブロックで囲む", () => {
+    const prompt = buildUserPrompt(baseInput);
+    expect(prompt).toContain("とても親切な対応でした。");
+    expect(prompt).toContain("5★");
+    expect(prompt).toContain("```");
+  });
+});
+
+describe("containsNgWords", () => {
+  it("NGワードが含まれていればtrueを返す", () => {
+    expect(containsNgWords("最悪の体験", ["最悪"])).toBe(true);
+  });
+
+  it("NGワードが含まれていなければfalseを返す", () => {
+    expect(containsNgWords("良い体験", ["最悪"])).toBe(false);
   });
 });
 
@@ -90,8 +117,34 @@ describe("removeNgWords", () => {
 describe("generateReviewReply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.NODE_ENV = "test";
     resetClient();
     process.env.OPENAI_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it("system/userメッセージが分離されている", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: "口コミありがとうございます。" } }],
+      usage: { prompt_tokens: 100, completion_tokens: 50 },
+    });
+
+    await generateReviewReply(baseInput);
+
+    const callArgs = mockCreate.mock.calls[0][0];
+    expect(callArgs.messages).toHaveLength(2);
+    expect(callArgs.messages[0].role).toBe("system");
+    expect(callArgs.messages[1].role).toBe("user");
+    // 口コミ本文はuserメッセージにのみ含まれる
+    expect(callArgs.messages[0].content).not.toContain(
+      "とても親切な対応でした。"
+    );
+    expect(callArgs.messages[1].content).toContain(
+      "とても親切な対応でした。"
+    );
   });
 
   it("正常にAI返信を生成する", async () => {
@@ -104,6 +157,7 @@ describe("generateReviewReply", () => {
 
     expect(result.generatedReply).toBe("口コミありがとうございます。");
     expect(result.tokensUsed).toEqual({ input: 100, output: 50 });
+    expect(result.ngWordsDetected).toBe(false);
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gpt-4o-mini",
@@ -112,7 +166,7 @@ describe("generateReviewReply", () => {
     );
   });
 
-  it("生成結果にNGワードが含まれていたら除去する", async () => {
+  it("生成結果にNGワードが含まれていたら除去しフラグを立てる", async () => {
     mockCreate.mockResolvedValueOnce({
       choices: [
         { message: { content: "最悪のご体験をされたとのこと。" } },
@@ -122,6 +176,7 @@ describe("generateReviewReply", () => {
 
     const result = await generateReviewReply(baseInput);
     expect(result.generatedReply).not.toContain("最悪");
+    expect(result.ngWordsDetected).toBe(true);
   });
 
   it("APIレスポンスにusageがない場合は0を返す", async () => {

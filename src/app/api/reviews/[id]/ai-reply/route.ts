@@ -6,7 +6,7 @@ import {
   requireReview,
   logApiError,
 } from "@/lib/api-helpers";
-import { generateReviewReply } from "@/lib/openai";
+import { generateReviewReply, isOpenAiError } from "@/lib/openai";
 
 export async function POST(
   _request: Request,
@@ -26,6 +26,20 @@ export async function POST(
     // 口コミ取得（locationリレーション込み）
     const review = await requireReview(db, reviewId);
     if (review instanceof NextResponse) return review;
+
+    // 既存のdraftがあればそれを返す（連打対策）
+    const existingDraft = await db.reviewReply.findFirst({
+      where: { reviewId: review.id, status: "draft" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existingDraft?.aiGeneratedText) {
+      return NextResponse.json({
+        generatedReply: existingDraft.aiGeneratedText,
+        tokensUsed: { input: 0, output: 0 },
+        ngWordsDetected: false,
+        cached: true,
+      });
+    }
 
     // AI返信設定を取得
     const aiSettings = await db.aiReplySettings.findUnique({
@@ -64,11 +78,8 @@ export async function POST(
   } catch (error) {
     logApiError("reviews/[id]/ai-reply", error);
 
-    // OpenAI APIエラーの判別
-    if (
-      error instanceof Error &&
-      (error.message.includes("API") || error.message.includes("openai"))
-    ) {
+    // OpenAI APIエラーの判別（SDKのAPIErrorクラスで判定）
+    if (isOpenAiError(error)) {
       return NextResponse.json(
         { error: "AI返信の生成に失敗しました", code: "AI_SERVICE_ERROR" },
         { status: 502 }

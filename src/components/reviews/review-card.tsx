@@ -9,7 +9,6 @@ import type { ReviewData } from "./reviews-content";
 
 interface ReviewCardProps {
   review: ReviewData;
-  locationId: string;
   onReviewUpdated: () => void;
 }
 
@@ -42,7 +41,6 @@ function formatDate(dateStr: string | null): string {
 
 export function ReviewCard({
   review,
-  locationId: _locationId,
   onReviewUpdated,
 }: ReviewCardProps) {
   const hasReply = review.reply !== null;
@@ -82,10 +80,14 @@ export function ReviewCard({
       setAiReply(data.generatedReply);
       setEditedReply(data.generatedReply);
 
-      // クリップボードにコピー
-      await navigator.clipboard.writeText(data.generatedReply);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      // クリップボードにコピー（失敗しても致命的ではない）
+      try {
+        await navigator.clipboard.writeText(data.generatedReply);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch {
+        // HTTPS以外やiframe内ではクリップボードAPIが使えない場合がある
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "AI返信の生成に失敗しました"
@@ -150,12 +152,9 @@ export function ReviewCard({
     }
   };
 
-  // 返信するボタンのクリック
+  // 返信するボタンのクリック（AI自動生成はせず、手動入力フォームを開く）
   const handleOpenReplyForm = () => {
     setShowReplyForm(true);
-    if (!aiReply && !editedReply) {
-      handleAiReply();
-    }
   };
 
   return (

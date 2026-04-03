@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { APIError } from "openai";
 
 // OpenAIクライアント（シングルトン）
 let client: OpenAI | null = null;
@@ -14,9 +14,17 @@ function getClient(): OpenAI {
   return client;
 }
 
-/** テスト用: クライアントをリセット */
+/** テスト用: クライアントをリセット（テスト環境のみ） */
 export function resetClient() {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("resetClient はテスト環境でのみ使用可能です");
+  }
   client = null;
+}
+
+/** OpenAI APIエラーかどうか判定 */
+export function isOpenAiError(error: unknown): boolean {
+  return error instanceof APIError;
 }
 
 /** AI返信生成の入力パラメータ */
@@ -35,12 +43,13 @@ export interface GenerateReplyInput {
 export interface GenerateReplyResult {
   generatedReply: string;
   tokensUsed: { input: number; output: number };
+  ngWordsDetected: boolean;
 }
 
 /**
- * 口コミ返信プロンプトを構築する
+ * systemメッセージ用のプロンプトを構築する（店舗情報・ルール）
  */
-export function buildReplyPrompt(input: GenerateReplyInput): string {
+export function buildSystemPrompt(input: GenerateReplyInput): string {
   const lines: string[] = [
     "あなたは店舗のカスタマーサポート担当です。",
     "以下の条件でGoogle口コミへの返信文を生成してください。",
@@ -64,7 +73,6 @@ export function buildReplyPrompt(input: GenerateReplyInput): string {
 
   lines.push("- 150文字〜300文字程度");
 
-  // 低評価（1-2★）の場合は謝罪トーンを追加
   if (input.rating <= 2) {
     lines.push(
       "- 低評価のため、まず謝罪から始め、改善への意欲を示してください"
@@ -72,17 +80,33 @@ export function buildReplyPrompt(input: GenerateReplyInput): string {
   }
 
   lines.push("");
-  lines.push("## 口コミ内容");
-  lines.push(`- 評価: ${input.rating}★`);
-  lines.push(`- 本文: ${input.comment}`);
-  lines.push("");
   lines.push("返信文のみを出力してください。");
 
   return lines.join("\n");
 }
 
 /**
- * NGワードが返信文に含まれているかチェックし、該当箇所を除去する
+ * userメッセージ用のプロンプトを構築する（口コミ内容）
+ * ユーザー入力をsystemメッセージから分離してインジェクションリスクを軽減
+ */
+export function buildUserPrompt(input: GenerateReplyInput): string {
+  return [
+    "## 口コミ内容",
+    `- 評価: ${input.rating}★`,
+    "- 本文:",
+    "```",
+    input.comment,
+    "```",
+  ].join("\n");
+}
+
+/** NGワードが含まれているかチェック */
+export function containsNgWords(text: string, ngWords: string[]): boolean {
+  return ngWords.some((word) => word && text.includes(word));
+}
+
+/**
+ * NGワードが返信文に含まれている場合に除去する
  */
 export function removeNgWords(text: string, ngWords: string[]): string {
   if (ngWords.length === 0) return text;
@@ -97,24 +121,32 @@ export function removeNgWords(text: string, ngWords: string[]): string {
 
 /**
  * OpenAI API を使って口コミ返信文を生成する
+ * system/userメッセージを分離してプロンプトインジェクションリスクを軽減
  */
 export async function generateReviewReply(
   input: GenerateReplyInput
 ): Promise<GenerateReplyResult> {
   const openai = getClient();
-  const prompt = buildReplyPrompt(input);
+  const systemPrompt = buildSystemPrompt(input);
+  const userPrompt = buildUserPrompt(input);
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
     max_tokens: 500,
     temperature: 0.7,
   });
 
   const rawReply = response.choices[0]?.message?.content?.trim() ?? "";
 
-  // NGワードの二重チェック
-  const generatedReply = removeNgWords(rawReply, input.ngWords);
+  // NGワード検出チェック
+  const ngWordsDetected = containsNgWords(rawReply, input.ngWords);
+  const generatedReply = ngWordsDetected
+    ? removeNgWords(rawReply, input.ngWords)
+    : rawReply;
 
   return {
     generatedReply,
@@ -122,5 +154,6 @@ export async function generateReviewReply(
       input: response.usage?.prompt_tokens ?? 0,
       output: response.usage?.completion_tokens ?? 0,
     },
+    ngWordsDetected,
   };
 }

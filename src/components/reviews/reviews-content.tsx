@@ -179,7 +179,6 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
               <ReviewCard
                 key={review.id}
                 review={review}
-                locationId={locationId}
                 onReviewUpdated={fetchReviews}
               />
             ))}
