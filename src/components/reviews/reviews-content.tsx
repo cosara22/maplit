@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ReviewStatsBar } from "./review-stats-bar";
 import { AiReplySettingsCard } from "./ai-reply-settings-card";
 import { ReviewFilters } from "./review-filters";
@@ -75,6 +75,9 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
     fetchStats();
   }, [locationId]);
 
+  // AIOスコア算出中フラグ（重複呼び出し・無限ループ防止）
+  const isCalculatingAioScore = useRef(false);
+
   // 口コミ一覧取得
   const fetchReviews = useCallback(async () => {
     setLoading(true);
@@ -109,6 +112,37 @@ export function ReviewsContent({ locationId }: ReviewsContentProps) {
   useEffect(() => {
     fetchReviews();
   }, [fetchReviews]);
+
+  // AIOスコア未算出の口コミを検出して自動算出（reviewsの変更をトリガー）
+  useEffect(() => {
+    const hasUncalculated = reviews.some(
+      (r) => r.aioScore === null && r.comment
+    );
+    if (!hasUncalculated || isCalculatingAioScore.current) return;
+
+    isCalculatingAioScore.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/reviews/aio-score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locationId }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.calculated > 0) {
+            // 算出完了後にリストを再取得してスコアを反映
+            await fetchReviews();
+          }
+        }
+      } catch {
+        // AIOスコア算出失敗は致命的でないため無視
+      } finally {
+        isCalculatingAioScore.current = false;
+      }
+    })();
+  }, [reviews, locationId, fetchReviews]);
 
   // フィルタ変更時にページを1にリセット
   const handleFilterChange = (newFilter: string) => {
